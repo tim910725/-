@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>膚色分析網站</title>
+    <style>
+        .container { display: flex; height: 100vh; }
+        .left, .right { flex: 1; padding: 20px; }
+        video { width: 100%; border: 1px solid #ccc; }
+        button { margin-top: 10px; padding: 10px 20px; font-size: 16px; }
+        .right { background-color: #f9f9f9; overflow-y: auto; }
+        h2 { margin-top: 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left">
+            <video id="video" autoplay></video>
+            <button id="analyzeBtn">分析照片</button>
+        </div>
+        <div class="right" id="results">
+            <h2>分析結果</h2>
+            <p>等待分析...</p>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const resultsDiv = document.getElementById('results');
+        let faceDetectedTime = null;
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => video.srcObject = stream)
+            .catch(err => console.error("攝影機錯誤:", err));
+
+        setInterval(async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            const response = await fetch('/detect_face', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            });
+            const data = await response.json();
+
+            if (data.face_detected) {
+                if (!faceDetectedTime) faceDetectedTime = Date.now();
+                if (Date.now() - faceDetectedTime >= 2000) {
+                    analyzeImage(imageData);
+                    faceDetectedTime = null;
+                }
+            } else {
+                faceDetectedTime = null;
+            }
+        }, 100);
+
+        analyzeBtn.addEventListener('click', () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg');
+            analyzeImage(imageData);
+        });
+
+        async function analyzeImage(imageData) {
+            const response = await fetch('/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            });
+            const result = await response.json();
+
+            if (result.error) {
+                resultsDiv.innerHTML = `<h2>分析結果</h2><p>${result.error}</p>`;
+            } else {
+                resultsDiv.innerHTML = `
+                    <h2>分析結果</h2>
+                    <p><strong>臉型:</strong> ${result.face_shape}</p>
+                    <p><strong>眉型:</strong> ${result.brow_shape}</p>
+                    <p><strong>眼型:</strong> ${result.eye_shape}</p>
+                    <p><strong>鼻型:</strong> ${result.nose_shape}</p>
+                    <p><strong>膚色:</strong> ${result.tone}</p>
+                    <p><strong>季型:</strong> ${result.season_type}</p>
+                    <p><strong>適合的服裝顏色:</strong> ${result.color_suggestions}</p>
+                    <p><strong>服裝風格建議:</strong> ${result.style_suggestion}</p>
+                    <h3>個性化妝容建議</h3>
+                    <p><strong>粉底:</strong> ${result.foundation_suggestion}</p>
+                    <p><strong>鼻影:</strong> ${result.nose_shadow_suggestion}</p>
+                    <p><strong>腮紅:</strong> ${result.blush_suggestion}</p>
+                    <p><strong>眼影:</strong> ${result.eyeshadow_suggestion}</p>
+                    <p><strong>眼線:</strong> ${result.eyeliner_suggestion}</p>
+                    <p><strong>口紅:</strong> ${result.lipstick_suggestion}</p>
+                    <h3>建議口紅色號</h3>
+                    <ul>${result.suggested_lipsticks.map(l => `<li>${l.name} (R:${l.color[0]}, G:${l.color[1]}, B:${l.color[2]})</li>`).join('')}</ul>
+                    <p><strong>Line Notify 狀態:</strong> ${result.notify_status}</p>
+                `;
+            }
+        }
+    </script>
+</body>
