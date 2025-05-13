@@ -18,7 +18,7 @@
 1. Clone 專案到本地：
 
    ```bash
-   git clone <https://github.com/tim910725>
+   git clone https://github.com/tim910725/-.git
    cd <位置>
    ```
 
